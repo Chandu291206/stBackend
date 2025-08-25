@@ -103,6 +103,6 @@ Ex.get('/api/datap', async (req, res) => {
 });
 
 Ex.listen(5501,()=>{
-    console.log("Running");
+    console.log("Running in port 5501");
     
 })
