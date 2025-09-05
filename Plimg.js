@@ -19,7 +19,7 @@ Ex.use(express.static(path.join(__dirname, 'public')));
 mongoose.connect("mongodb://127.0.0.1:27017/Info");
 
 Ex.use(cors({
-  origin: 'http://localhost:5173',  // your frontend origin
+  origin: 'http://localhost:5173',  
   methods: ['GET', 'POST'],
   credentials: true
 }));
@@ -66,7 +66,6 @@ Ex.post('/register',async (req,res)=>{
         });
     }
     catch (error) {
-        // Duplicate key error = 11000
         if (error.code === 11000) {
             return res.status(400).json({ 
                 message: "User with this email or username already exists" 
