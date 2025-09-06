@@ -14,7 +14,6 @@ const API_T="Mn28ppN9EcbjtF0l2d5pzHOPnuif0MnZnvjoEv1ZY7KGOWmCQAc1iCRjgoWV";
 
 Ex.use(express.json());
 Ex.use(express.urlencoded({ extended: true }));
-Ex.use(express.static(path.join(__dirname, 'public')));
 
 mongoose.connect("mongodb://127.0.0.1:27017/Info");
 
@@ -26,18 +25,23 @@ Ex.use(cors({
 
 
 Ex.get("/",(req,res)=>{
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+   console.log("welcome");
+   
 })
 
 Ex.post("/login",async (req,res)=>{
     try{
-        const {userl,password}=req.body;
-        console.log({userl,password});
+        const {userl,lpass}=req.body;
+        console.log({userl,lpass});
         
-        const user=await Lform.findOne({$or:[{usermail:userl,password},{username:userl,password}]});
+        const user = await Lform.findOne({
+  $or: [{ usermail: userl }, { username: userl }],
+  password: lpass,
+});
+
         
         if(user) {
-            res.sendFile(path.join(__dirname, 'public','login.html'));
+            res.status(200).json({ message: 'Login successful', user });
             }
         
         else{res.status(404).json({ message: "User not found" });} 
