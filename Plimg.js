@@ -8,6 +8,7 @@ import { fileURLToPath } from 'url';
 import Lform from './users.js';
 import apip from './players.js';
 import inplayer from './Offplayer.js';
+import Cart from './cart.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const Ex=express();
@@ -20,7 +21,7 @@ mongoose.connect("mongodb://127.0.0.1:27017/Info");
 
 Ex.use(cors({
   origin: 'http://localhost:5173',  
-  methods: ['GET', 'POST'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
   credentials: true
 }));
 
@@ -57,7 +58,7 @@ Ex.post('/register', async (req, res) => {
     // Decide path after registration
     let path = "/";
     if (role === "Player") path = "/Player";
-    else if (role === "Scout") path = "/Scoutmar";
+    else if (role === "Scout") path = "/Sprofile";
     else if (role === "Agent") path = "/Agent";
 
     const newUser = await Lform.create({ username, phno, usermail, password, role, path });
@@ -76,31 +77,6 @@ Ex.post('/register', async (req, res) => {
 });
 
 
-Ex.get("/api",async (req,res)=>{
-    try{
-                const reply=await axios.get(`https://api.sportmonks.com/v3/football/players?api_token=${API_T}`);
-                const players=reply.data.data;
-                console.log(players);
-                console.log("Data fetched and stored locally");
-                
-                await apip.deleteMany({});
-                await apip.insertMany(players, { ordered: false });
-              }
-
-            catch(error){
-                console.error("Something went wrong",error);
-            }
-})
-
-
-Ex.get('/api/datap', async (req, res) => {
-  try {
-    const data = await apip.find({});
-    res.json(data);
-  } catch (error) {
-    res.status(500).send({ error: 'Failed to fetch data' });
-  }
-});
 
 Ex.post("/Offplayers",async (req,res)=>{
     try{
@@ -138,6 +114,281 @@ Ex.get('/api/datao', async (req, res) => {
     res.json(odata);
   } catch (error) {
     res.status(500).send({ error: 'Failed to fetch data' });
+  }
+});
+
+// List all registered users (usernames)
+Ex.get('/users', async (req, res) => {
+  try {
+    const users = await Lform.find({}, { username: 1, role: 1, usermail: 1, phno: 1, path: 1, _id: 0 }).lean();
+    res.json(users);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch users' });
+  }
+});
+
+// Update user details
+Ex.put('/users/:username', async (req, res) => {
+  try {
+    const { username } = req.params;
+    const { usermail, phno } = req.body;
+    
+    console.log('Update request received for username:', username);
+    console.log('Request body:', { usermail, phno });
+    
+    // Validate required fields
+    if (!usermail || !phno) {
+      console.log('Validation failed: missing required fields');
+      return res.status(400).json({ error: 'Email and phone number are required' });
+    }
+    
+    // Update user details
+    console.log('Attempting to update user in database...');
+    const updatedUser = await Lform.findOneAndUpdate(
+      { username },
+      { usermail, phno },
+      { new: true, select: 'username role usermail phno path' }
+    );
+    
+    console.log('Database update result:', updatedUser);
+    
+    if (!updatedUser) {
+      console.log('User not found in database');
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    console.log('User updated successfully:', updatedUser);
+    res.json(updatedUser);
+  } catch (error) {
+    console.error('Error updating user details:', error);
+    res.status(500).json({ error: 'Failed to update user details' });
+  }
+});
+
+// Market endpoints for managing players in the market
+
+// Get all players in the market
+Ex.get('/market/players', async (req, res) => {
+  try {
+    const marketPlayers = await apip.find({ inMarket: true }).lean();
+    res.json(marketPlayers);
+  } catch (error) {
+    console.error('Error fetching market players:', error);
+    res.status(500).json({ error: 'Failed to fetch market players' });
+  }
+});
+
+// Add player to market
+Ex.post('/market/players', async (req, res) => {
+  try {
+    const playerData = req.body;
+    
+    // Check if player already exists in market
+    const existingPlayer = await apip.findOne({ 
+      $or: [
+        { common_name: playerData.username },
+        { display_name: playerData.username },
+        { username: playerData.username }
+      ]
+    });
+    
+    if (existingPlayer) {
+      // Update existing player to be in market
+      const updatedPlayer = await apip.findOneAndUpdate(
+        { _id: existingPlayer._id },
+        { 
+          ...playerData,
+          inMarket: true,
+          common_name: playerData.username,
+          display_name: playerData.username,
+          team_name: playerData.teamname,
+          position: playerData.position,
+          country_name: playerData.country,
+          current_age: parseInt(playerData.age),
+          image_path: playerData.image,
+          height_cm: playerData.height,
+          weight_kg: playerData.weight,
+          preferred_foot: playerData.foot,
+          shirt_number: playerData.jersey
+        },
+        { new: true }
+      );
+      res.json(updatedPlayer);
+    } else {
+      // Create new player in market
+      const newPlayer = new apip({
+        ...playerData,
+        inMarket: true,
+        common_name: playerData.username,
+        display_name: playerData.username,
+        team_name: playerData.teamname,
+        position: playerData.position,
+        country_name: playerData.country,
+        current_age: parseInt(playerData.age),
+        image_path: playerData.image,
+        height_cm: playerData.height,
+        weight_kg: playerData.weight,
+        preferred_foot: playerData.foot,
+        shirt_number: playerData.jersey
+      });
+      
+      await newPlayer.save();
+      res.json(newPlayer);
+    }
+  } catch (error) {
+    console.error('Error adding player to market:', error);
+    res.status(500).json({ error: 'Failed to add player to market' });
+  }
+});
+
+// Remove player from market
+Ex.delete('/market/players/:playerId', async (req, res) => {
+  try {
+    const { playerId } = req.params;
+    
+    const updatedPlayer = await apip.findOneAndUpdate(
+      { _id: playerId },
+      { inMarket: false },
+      { new: true }
+    );
+    
+    if (!updatedPlayer) {
+      return res.status(404).json({ error: 'Player not found' });
+    }
+    
+    res.json({ message: 'Player removed from market', player: updatedPlayer });
+  } catch (error) {
+    console.error('Error removing player from market:', error);
+    res.status(500).json({ error: 'Failed to remove player from market' });
+  }
+});
+
+// Cart endpoints for Scout accounts
+
+// Get cart for a specific scout
+Ex.get('/cart/:scoutId', async (req, res) => {
+  try {
+    const { scoutId } = req.params;
+    const cart = await Cart.findOne({ scoutId });
+    
+    if (!cart) {
+      return res.json({ scoutId, players: [] });
+    }
+    
+    res.json(cart);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch cart' });
+  }
+});
+
+// Add player to scout's cart
+Ex.post('/cart/:scoutId/add', async (req, res) => {
+  try {
+    const { scoutId } = req.params;
+    const playerData = req.body;
+    
+    // Check if player already exists in cart
+    const existingCart = await Cart.findOne({ scoutId });
+    
+    if (existingCart) {
+      // Check if player already exists
+      const playerExists = existingCart.players.some(
+        player => player.playerId === playerData.playerId || 
+                 player.name === playerData.name
+      );
+      
+      if (playerExists) {
+        return res.status(400).json({ error: 'Player already in cart' });
+      }
+      
+      // Add player to existing cart
+      existingCart.players.push({
+        ...playerData,
+        addedAt: new Date()
+      });
+      
+      await existingCart.save();
+      res.json(existingCart);
+    } else {
+      // Create new cart
+      const newCart = new Cart({
+        scoutId,
+        players: [{
+          ...playerData,
+          addedAt: new Date()
+        }]
+      });
+      
+      await newCart.save();
+      res.json(newCart);
+    }
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to add player to cart' });
+  }
+});
+
+// Remove player from scout's cart
+Ex.delete('/cart/:scoutId/remove/:playerId', async (req, res) => {
+  try {
+    const { scoutId, playerId } = req.params;
+    
+    const cart = await Cart.findOne({ scoutId });
+    
+    if (!cart) {
+      return res.status(404).json({ error: 'Cart not found' });
+    }
+    
+    cart.players = cart.players.filter(player => 
+      player.playerId !== playerId && player.name !== playerId
+    );
+    
+    await cart.save();
+    res.json(cart);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to remove player from cart' });
+  }
+});
+
+// Clear entire cart for a scout
+Ex.delete('/cart/:scoutId/clear', async (req, res) => {
+  try {
+    const { scoutId } = req.params;
+    
+    const cart = await Cart.findOne({ scoutId });
+    
+    if (!cart) {
+      return res.status(404).json({ error: 'Cart not found' });
+    }
+    
+    cart.players = [];
+    await cart.save();
+    
+    res.json({ message: 'Cart cleared successfully', cart });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to clear cart' });
+  }
+});
+
+// Update entire cart for a scout (replace all players)
+Ex.put('/cart/:scoutId', async (req, res) => {
+  try {
+    const { scoutId } = req.params;
+    const { players } = req.body;
+    
+    const cart = await Cart.findOneAndUpdate(
+      { scoutId },
+      { 
+        players: players.map(player => ({
+          ...player,
+          addedAt: player.addedAt || new Date()
+        }))
+      },
+      { upsert: true, new: true }
+    );
+    
+    res.json(cart);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update cart' });
   }
 });
 
