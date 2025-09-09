@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 
 import Lform from './users.js';
 import apip from './players.js';
+import inplayer from './Offplayer.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const Ex=express();
@@ -26,58 +27,54 @@ Ex.use(cors({
 
 Ex.get("/",(req,res)=>{
    console.log("welcome");
-   
 })
 
-Ex.post("/login",async (req,res)=>{
-    try{
-        const {userl,lpass}=req.body;
-        console.log({userl,lpass});
-        
-        const user = await Lform.findOne({
-  $or: [{ usermail: userl }, { username: userl }],
-  password: lpass,
+Ex.post("/login", async (req, res) => {
+  try {
+    const { userl, lpass } = req.body;
+    const user = await Lform.findOne({
+      $or: [{ usermail: userl }, { username: userl }],
+      password: lpass,
+    });
+    if (user) {
+      res.status(200).json({
+        message: 'Login successful',
+        role: user.role,
+        path: user.path
+      });
+    } else {
+      res.status(404).json({ message: "User not found" });
+    }
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch player data" });
+  }
 });
 
-        
-        if(user) {
-            res.status(200).json({ message: 'Login successful', user });
-            }
-        
-        else{res.status(404).json({ message: "User not found" });} 
-    }
-    catch(error){
-    console.error("Something went wrong", error.message);
-    res.status(500).json({ error: "Failed to fetch player data" });
-}
 
-    
-})
+Ex.post('/register', async (req, res) => {
+  try {
+    const { username, phno, usermail, password, role } = req.body;
+    // Decide path after registration
+    let path = "/";
+    if (role === "Player") path = "/Player";
+    else if (role === "Scout") path = "/Scoutmar";
+    else if (role === "Agent") path = "/Agent";
 
-Ex.post('/register',async (req,res)=>{
-    try{
+    const newUser = await Lform.create({ username, phno, usermail, password, role, path });
+    res.status(201).json({
+      message: "User registered successfully",
+      role,
+      path
+    });
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(400).json({ message: "User with this email or username already exists" });
+    }
+    console.error(error);
+    res.status(500).json({ error: "Registration error" });
+  }
+});
 
-        const {username,phno,usermail,password}=req.body;
-        const fUser=await Lform.create({
-            username,   
-            phno,
-            usermail,
-            password,
-        });
-        console.log(fUser);
-        res.status(201).json({ 
-            message: "User registered successfully", 
-        });
-    }
-    catch (error) {
-        if (error.code === 11000) {
-            return res.status(400).json({ 
-                message: "User with this email or username already exists" 
-            });
-        }
-        console.error(error);
-    }
-})
 
 Ex.get("/api",async (req,res)=>{
     try{
@@ -100,6 +97,45 @@ Ex.get('/api/datap', async (req, res) => {
   try {
     const data = await apip.find({});
     res.json(data);
+  } catch (error) {
+    res.status(500).send({ error: 'Failed to fetch data' });
+  }
+});
+
+Ex.post("/Offplayers",async (req,res)=>{
+    try{
+        const {playerName,teamName,position,country,jerseyNumber,age,height,weight,preferredFoot,profileImageUrl}=req.body;
+        const oplayer=await inplayer.create({
+            username:playerName,   
+            teamname:teamName,
+            position:position,
+            country:country,
+            jersey:jerseyNumber,
+            image:profileImageUrl,
+            age:age,
+            height:height,
+            weight:weight,
+            foot:preferredFoot
+        });
+        console.log(oplayer);
+        res.status(201).json({ 
+            message: "Player registered successfully", 
+        });
+    }
+    catch (error) {
+                if (error.code === 11000) {
+                    return res.status(400).json({ 
+                        message: "Player with this jersey number already exists" 
+                    });
+                }
+                console.error(error);
+            }
+        })
+
+Ex.get('/api/datao', async (req, res) => {
+  try {
+    const odata = await inplayer.find({});
+    res.json(odata);
   } catch (error) {
     res.status(500).send({ error: 'Failed to fetch data' });
   }
