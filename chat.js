@@ -18,6 +18,10 @@ let usersByName = {};
 let usersById = {};
 // socketId -> allowed recipient names (provided by client UI like Cside.jsx)
 let recipientsBySocket = {};
+// displayName (DB username) -> socketId
+let displayNameToSocketId = {};
+// socketId -> displayName (DB username)
+let socketIdToDisplayName = {};
 
 io.on("connection", (socket) => {
   console.log("A user connected:", socket.id);
@@ -32,12 +36,29 @@ io.on("connection", (socket) => {
   };
 
   // Backwards-compatible: support both 'register' and 'login'
-  socket.on("register", (username) => {
+  socket.on("register", (maybeUsername) => {
+    const username =
+      typeof maybeUsername === "string" && maybeUsername.trim().length > 0
+        ? maybeUsername.trim()
+        : socket.id;
     attachUsername(username);
   });
 
-  socket.on("login", ({ username }) => {
+  socket.on("login", (payload) => {
+    const username =
+      payload && typeof payload.username === "string" && payload.username.trim().length > 0
+        ? payload.username.trim()
+        : socket.id;
     attachUsername(username);
+  });
+
+  // Map this socket to a human display name (DB username)
+  socket.on("set_display_name", (displayName) => {
+    if (typeof displayName === "string" && displayName.trim().length > 0) {
+      displayNameToSocketId[displayName] = socket.id;
+      socketIdToDisplayName[socket.id] = displayName;
+      console.log(`Display name '${displayName}' mapped to ${socket.id}`);
+    }
   });
 
   // Client can provide allowed recipient names (e.g., from Cside.jsx list)
@@ -59,9 +80,11 @@ io.on("connection", (socket) => {
       return;
     }
 
-    const receiverId = usersByName[receiver];
+    // Resolve receiver by display name first, then by socket-username
+    const receiverId = displayNameToSocketId[receiver] || usersByName[receiver];
     if (receiverId) {
-      io.to(receiverId).emit("private_message", { sender: effectiveSender, message });
+      const senderDisplay = socketIdToDisplayName[socket.id] || effectiveSender;
+      io.to(receiverId).emit("private_message", { sender: senderDisplay, message });
     } else {
       io.to(socket.id).emit("error", { message: `User '${receiver}' is not online or not registered.` });
     }
@@ -74,6 +97,12 @@ io.on("connection", (socket) => {
     }
     delete usersById[socket.id];
     delete recipientsBySocket[socket.id];
+    // Clean display name mappings
+    const disp = socketIdToDisplayName[socket.id];
+    if (disp && displayNameToSocketId[disp] === socket.id) {
+      delete displayNameToSocketId[disp];
+    }
+    delete socketIdToDisplayName[socket.id];
     console.log("User disconnected:", socket.id);
   });
 });

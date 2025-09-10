@@ -6,7 +6,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node Plimg",
-    "dev": "nodemon Plimg"
+    "dev": "nodemon Plimg",
+    "chat": "node chat"
   },
   "keywords": [],
   "author": "",
