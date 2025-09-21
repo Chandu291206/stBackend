@@ -143,7 +143,7 @@ Ex.put('/api/datao/:playerId', async (req, res) => {
 // List all registered users (usernames)
 Ex.get('/users', async (req, res) => {
   try {
-    const users = await Lform.find({}, { username: 1, role: 1, usermail: 1, phno: 1, path: 1, _id: 0 }).lean();
+    const users = await Lform.find({}, { username: 1, role: 1, usermail: 1, phno: 1, path: 1, profileImage: 1, _id: 0 }).lean();
     res.json(users);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch users' });
@@ -154,10 +154,10 @@ Ex.get('/users', async (req, res) => {
 Ex.put('/users/:username', async (req, res) => {
   try {
     const { username } = req.params;
-    const { usermail, phno } = req.body;
+    const { usermail, phno, profileImage } = req.body;
     
     console.log('Update request received for username:', username);
-    console.log('Request body:', { usermail, phno });
+    console.log('Request body:', { usermail, phno, profileImage });
     
     // Validate required fields
     if (!usermail || !phno) {
@@ -165,12 +165,18 @@ Ex.put('/users/:username', async (req, res) => {
       return res.status(400).json({ error: 'Email and phone number are required' });
     }
     
+    // Prepare update data
+    const updateData = { usermail, phno };
+    if (profileImage) {
+      updateData.profileImage = profileImage;
+    }
+    
     // Update user details
     console.log('Attempting to update user in database...');
     const updatedUser = await Lform.findOneAndUpdate(
       { username },
-      { usermail, phno },
-      { new: true, select: 'username role usermail phno path' }
+      updateData,
+      { new: true, select: 'username role usermail phno path profileImage' }
     );
     
     console.log('Database update result:', updatedUser);
