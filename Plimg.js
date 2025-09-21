@@ -117,6 +117,29 @@ Ex.get('/api/datao', async (req, res) => {
   }
 });
 
+// Update player details
+Ex.put('/api/datao/:playerId', async (req, res) => {
+  try {
+    const { playerId } = req.params;
+    const updateData = req.body;
+    
+    const updatedPlayer = await inplayer.findByIdAndUpdate(
+      playerId,
+      updateData,
+      { new: true }
+    );
+    
+    if (!updatedPlayer) {
+      return res.status(404).json({ error: 'Player not found' });
+    }
+    
+    res.json(updatedPlayer);
+  } catch (error) {
+    console.error('Error updating player:', error);
+    res.status(500).json({ error: 'Failed to update player details' });
+  }
+});
+
 // List all registered users (usernames)
 Ex.get('/users', async (req, res) => {
   try {
