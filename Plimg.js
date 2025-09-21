@@ -171,6 +171,7 @@ Ex.put('/users/:username', async (req, res) => {
 Ex.get('/market/players', async (req, res) => {
   try {
     const marketPlayers = await apip.find({ inMarket: true }).lean();
+    console.log('Fetched market players:', marketPlayers.length);
     res.json(marketPlayers);
   } catch (error) {
     console.error('Error fetching market players:', error);
@@ -178,25 +179,92 @@ Ex.get('/market/players', async (req, res) => {
   }
 });
 
+// Clear all players from database (for testing)
+Ex.delete('/market/players/clear', async (req, res) => {
+  try {
+    await apip.deleteMany({});
+    console.log('All players cleared from database');
+    res.json({ message: 'All players cleared successfully' });
+  } catch (error) {
+    console.error('Error clearing players:', error);
+    res.status(500).json({ error: 'Failed to clear players' });
+  }
+});
+
+// Get all players (including those not in market) - for debugging
+Ex.get('/market/players/all', async (req, res) => {
+  try {
+    const allPlayers = await apip.find({}).lean();
+    console.log('Fetched all players:', allPlayers.length);
+    res.json(allPlayers);
+  } catch (error) {
+    console.error('Error fetching all players:', error);
+    res.status(500).json({ error: 'Failed to fetch all players' });
+  }
+});
+
 // Add player to market
 Ex.post('/market/players', async (req, res) => {
   try {
     const playerData = req.body;
+    console.log('Received player data:', playerData);
     
-    // Check if player already exists in market
+    // Check if player already exists in market (only check by username and inMarket status)
     const existingPlayer = await apip.findOne({ 
-      $or: [
-        { common_name: playerData.username },
-        { display_name: playerData.username },
-        { username: playerData.username }
+      $and: [
+        {
+          $or: [
+            { common_name: playerData.username },
+            { display_name: playerData.username },
+            { username: playerData.username }
+          ]
+        },
+        { inMarket: true }
       ]
     });
     
+    console.log('Existing player in market found:', existingPlayer);
+    
     if (existingPlayer) {
-      // Update existing player to be in market
-      const updatedPlayer = await apip.findOneAndUpdate(
-        { _id: existingPlayer._id },
-        { 
+      // Player already in market, return existing player
+      console.log('Player already in market:', existingPlayer);
+      res.json(existingPlayer);
+    } else {
+      // Check if player exists but not in market
+      const playerExists = await apip.findOne({ 
+        $or: [
+          { common_name: playerData.username },
+          { display_name: playerData.username },
+          { username: playerData.username }
+        ]
+      });
+      
+      if (playerExists) {
+        // Update existing player to be in market
+        const updatedPlayer = await apip.findOneAndUpdate(
+          { _id: playerExists._id },
+          { 
+            ...playerData,
+            inMarket: true,
+            common_name: playerData.username,
+            display_name: playerData.username,
+            team_name: playerData.teamname,
+            position: playerData.position,
+            country_name: playerData.country,
+            current_age: parseInt(playerData.age) || 0,
+            image_path: playerData.image,
+            height_cm: playerData.height,
+            weight_kg: playerData.weight,
+            preferred_foot: playerData.foot,
+            shirt_number: playerData.jersey
+          },
+          { new: true }
+        );
+        console.log('Updated existing player to market:', updatedPlayer);
+        res.json(updatedPlayer);
+      } else {
+        // Create new player in market
+        const newPlayer = new apip({
           ...playerData,
           inMarket: true,
           common_name: playerData.username,
@@ -204,40 +272,24 @@ Ex.post('/market/players', async (req, res) => {
           team_name: playerData.teamname,
           position: playerData.position,
           country_name: playerData.country,
-          current_age: parseInt(playerData.age),
+          current_age: parseInt(playerData.age) || 0,
           image_path: playerData.image,
           height_cm: playerData.height,
           weight_kg: playerData.weight,
           preferred_foot: playerData.foot,
           shirt_number: playerData.jersey
-        },
-        { new: true }
-      );
-      res.json(updatedPlayer);
-    } else {
-      // Create new player in market
-      const newPlayer = new apip({
-        ...playerData,
-        inMarket: true,
-        common_name: playerData.username,
-        display_name: playerData.username,
-        team_name: playerData.teamname,
-        position: playerData.position,
-        country_name: playerData.country,
-        current_age: parseInt(playerData.age),
-        image_path: playerData.image,
-        height_cm: playerData.height,
-        weight_kg: playerData.weight,
-        preferred_foot: playerData.foot,
-        shirt_number: playerData.jersey
-      });
-      
-      await newPlayer.save();
-      res.json(newPlayer);
+        });
+        
+        console.log('Creating new player:', newPlayer);
+        await newPlayer.save();
+        console.log('New player saved:', newPlayer);
+        res.json(newPlayer);
+      }
     }
   } catch (error) {
     console.error('Error adding player to market:', error);
-    res.status(500).json({ error: 'Failed to add player to market' });
+    console.error('Error details:', error.message);
+    res.status(500).json({ error: 'Failed to add player to market', details: error.message });
   }
 });
 
@@ -245,6 +297,7 @@ Ex.post('/market/players', async (req, res) => {
 Ex.delete('/market/players/:playerId', async (req, res) => {
   try {
     const { playerId } = req.params;
+    console.log('Attempting to remove player with ID:', playerId);
     
     const updatedPlayer = await apip.findOneAndUpdate(
       { _id: playerId },
@@ -252,14 +305,18 @@ Ex.delete('/market/players/:playerId', async (req, res) => {
       { new: true }
     );
     
+    console.log('Updated player result:', updatedPlayer);
+    
     if (!updatedPlayer) {
+      console.log('Player not found with ID:', playerId);
       return res.status(404).json({ error: 'Player not found' });
     }
     
     res.json({ message: 'Player removed from market', player: updatedPlayer });
   } catch (error) {
     console.error('Error removing player from market:', error);
-    res.status(500).json({ error: 'Failed to remove player from market' });
+    console.error('Error details:', error.message);
+    res.status(500).json({ error: 'Failed to remove player from market', details: error.message });
   }
 });
 
